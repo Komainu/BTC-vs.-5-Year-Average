@@ -1,0 +1,17 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "BTC vs 5Y Average",
+    "subtitle": "Valuation in one glance",
+    "description": "Shows whether BTC is expensive, neutral, or cheap compared to the 5-year average (USD).",
+    "iconUrl": "https://btc-vs-5-year-average.vercel.app/icon.png",
+    "homeUrl": "https://btc-vs-5-year-average.vercel.app",
+    "primaryCategory": "tools",
+    "tags": ["bitcoin", "valuation", "analytics", "usd"]
+  }
+}
