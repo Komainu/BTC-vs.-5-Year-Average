@@ -1,61 +1,40 @@
-// app/api/avg5y/route.ts
-export const runtime = "edge";
+export const runtime = "nodejs";
 
-function unixSeconds(d: Date) {
-  return Math.floor(d.getTime() / 1000);
+const UA = "btc-vs-5y-average/1.0 (vercel)";
+
+async function fetchWithDebug(url: string) {
+  const r = await fetch(url, {
+    headers: { "User-Agent": UA, "Accept": "application/json" },
+    cache: "no-store",
+  });
+  const text = await r.text(); // JSONでもまず text で取る（パース失敗を見える化）
+  return { ok: r.ok, status: r.status, text };
 }
 
 export async function GET() {
-  // 「今日から5年前」(うるう年等も自然に吸収される)
-  const to = new Date();
-  const from = new Date(to);
-  from.setFullYear(to.getFullYear() - 5);
+  try {
+    // ここ：あなたが使っている「5年レンジ取得URL」を入れる
+    const url = "<<<YOUR_5Y_RANGE_URL_HERE>>>";
 
-  // CoinGecko: market_chart/range は [timestamp, price] 配列が返る
-  const url =
-    `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range` +
-    `?vs_currency=usd&from=${unixSeconds(from)}&to=${unixSeconds(to)}`;
+    const { ok, status, text } = await fetchWithDebug(url);
+    if (!ok) {
+      return Response.json(
+        { error: "Failed to fetch 5y range", status, body: text.slice(0, 300) },
+        { status: 200 }
+      );
+    }
 
-  const res = await fetch(url, {
-    // 5年平均は頻繁に変わらない → 1日キャッシュで十分
-    next: { revalidate: 60 * 60 * 24 },
-  });
+    // ここ：text を JSON にして avg5y を計算
+    const data = JSON.parse(text);
 
-  if (!res.ok) {
-    return Response.json({ error: "Failed to fetch 5y range" }, { status: 500 });
+    // TODO: data から日次価格配列を作り avg を算出
+    const avg5y = 0; // <- 実装に合わせる
+
+    return Response.json({ avg5y, days: 0, from: "", to: "" });
+  } catch (e: any) {
+    return Response.json(
+      { error: "avg5y exception", message: String(e?.message ?? e) },
+      { status: 200 }
+    );
   }
-
-  const data = await res.json();
-  const prices: [number, number][] = data?.prices;
-
-  if (!Array.isArray(prices) || prices.length < 100) {
-    return Response.json({ error: "Unexpected historical format" }, { status: 500 });
-  }
-
-  // 返り値は細かい間隔の点が混ざることがあるので、
-  // 「日ごとに1点だけ使う」(最初に現れた日付の点を採用) で安定化
-  const seen = new Set<string>();
-  let sum = 0;
-  let count = 0;
-
-  for (const [tsMs, price] of prices) {
-    if (typeof tsMs !== "number" || typeof price !== "number") continue;
-
-    const dayKey = new Date(tsMs).toISOString().slice(0, 10); // YYYY-MM-DD
-    if (seen.has(dayKey)) continue;
-    seen.add(dayKey);
-
-    sum += price;
-    count += 1;
-  }
-
-  const avg5y = sum / count;
-
-  return Response.json({
-    avg5y,
-    days: count,
-    updatedAt: Date.now(),
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  });
 }
