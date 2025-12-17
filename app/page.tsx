@@ -1,9 +1,24 @@
-"use client";
 // app/page.tsx
+
+export const dynamic = "force-dynamic"; // 常に最新データにしたい場合
+
 export default async function Page() {
+  // サーバー側で同一アプリ内のAPIを叩くなら相対パスは使えないので、
+  // 代わりに「同じロジックを関数化して直接呼ぶ」か、外部APIを直接叩くのが正道。
+  // ここでは簡単に「外部APIを /api が使っている先から直接」…が理想だが、
+  // いったん既存APIを使うなら absolute URL が必要。
+
+  const base =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.VERCEL_URL?.startsWith("http")
+      ? process.env.VERCEL_URL
+      : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "https://btc-vs-5-year-average.vercel.app";
+
   const [pRes, aRes] = await Promise.all([
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/btc`, { cache: "no-store" }),
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/avg5y`, { cache: "no-store" }),
+    fetch(`${base}/api/btc`, { cache: "no-store" }),
+    fetch(`${base}/api/avg5y`, { cache: "no-store" }),
   ]);
 
   if (!pRes.ok || !aRes.ok) {
@@ -27,8 +42,7 @@ export default async function Page() {
   const fmtUSD = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
-  const fmtPct = (n: number) =>
-    `${(n * 100).toFixed(1)}%`;
+  const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
   return (
     <main style={{ padding: 16, fontFamily: "system-ui" }}>
