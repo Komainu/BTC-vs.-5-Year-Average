@@ -1,31 +1,43 @@
 // app/page.tsx
+import { headers } from "next/headers";
 
-export const dynamic = "force-dynamic"; // 常に最新データにしたい場合
+export const dynamic = "force-dynamic";
+
+function getOrigin() {
+  // 1) 明示指定があればそれを使う（https:// を含めること）
+  const explicit = process.env.NEXT_PUBLIC_BASE_URL;
+  if (explicit && explicit.startsWith("http")) return explicit.replace(/\/$/, "");
+
+  // 2) Vercel本番/プレビューで確実に取れるホストから組み立て
+  const h = headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  if (host) return `${proto}://${host}`;
+
+  // 3) 最後の保険（ここには通常来ない）
+  return "https://btc-vs-5-year-average.vercel.app";
+}
 
 export default async function Page() {
-  // サーバー側で同一アプリ内のAPIを叩くなら相対パスは使えないので、
-  // 代わりに「同じロジックを関数化して直接呼ぶ」か、外部APIを直接叩くのが正道。
-  // ここでは簡単に「外部APIを /api が使っている先から直接」…が理想だが、
-  // いったん既存APIを使うなら absolute URL が必要。
-
-  const base =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.VERCEL_URL?.startsWith("http")
-      ? process.env.VERCEL_URL
-      : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "https://btc-vs-5-year-average.vercel.app";
+  const origin = getOrigin();
 
   const [pRes, aRes] = await Promise.all([
-    fetch(`${base}/api/btc`, { cache: "no-store" }),
-    fetch(`${base}/api/avg5y`, { cache: "no-store" }),
+    fetch(`${origin}/api/btc`, { cache: "no-store" }),
+    fetch(`${origin}/api/avg5y`, { cache: "no-store" }),
   ]);
 
+  // 失敗時に“原因が見える”ように、ステータスも表示（重要）
   if (!pRes.ok || !aRes.ok) {
     return (
-      <main style={{ padding: 16 }}>
+      <main style={{ padding: 16, fontFamily: "system-ui" }}>
         <h1>BTC Valuation</h1>
         <p>データ取得に失敗しました。しばらくして再試行してください。</p>
+        <hr />
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          <div>origin: {origin}</div>
+          <div>/api/btc status: {pRes.status}</div>
+          <div>/api/avg5y status: {aRes.status}</div>
+        </div>
       </main>
     );
   }
