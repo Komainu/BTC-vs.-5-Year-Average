@@ -1,61 +1,52 @@
 export const runtime = "nodejs";
 
-const UA = "btc-vs-5y-average/1.0 (vercel)";
-
-// 5年 ≒ 1826日（うるう年考慮で少し多め）
 const DAYS = 1826;
-
-async function fetchJson(url: string) {
-  const r = await fetch(url, {
-    headers: { "User-Agent": UA, "Accept": "application/json" },
-    cache: "no-store",
-  });
-  const text = await r.text();
-  return { ok: r.ok, status: r.status, text };
-}
+const UA = "btc-vs-5y-average/1.0 (vercel)";
 
 export async function GET() {
   try {
-    // CoinGecko: BTCの過去N日（USD）の価格配列を返す
-    // 返却形式: { prices: [[ms, price], ...], ... }
+    // CryptoCompare: 日次の終値(close)を返す
+    // limit=2000 で5年分をカバー
     const url =
-      `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart` +
-      `?vs_currency=usd&days=${DAYS}&interval=daily`;
+      `https://min-api.cryptocompare.com/data/v2/histoday` +
+      `?fsym=BTC&tsym=USD&limit=2000`;
 
-    const { ok, status, text } = await fetchJson(url);
+    const r = await fetch(url, {
+      headers: { "User-Agent": UA, "Accept": "application/json" },
+      cache: "no-store",
+    });
 
-    if (!ok) {
+    const text = await r.text();
+    if (!r.ok) {
       return Response.json(
-        { error: "Failed to fetch 5y range", status, body: text.slice(0, 300) },
+        { error: "Failed to fetch 5y range", status: r.status, body: text.slice(0, 300) },
         { status: 200 }
       );
     }
 
-    const data = JSON.parse(text) as { prices?: [number, number][] };
+    const data = JSON.parse(text) as any;
+    const arr: any[] = data?.Data?.Data ?? [];
 
-    const prices = Array.isArray(data.prices) ? data.prices : [];
-    if (prices.length < 300) {
-      return Response.json(
-        { error: "Not enough price points", count: prices.length },
-        { status: 200 }
-      );
+    if (!Array.isArray(arr) || arr.length < 300) {
+      return Response.json({ error: "Not enough data", count: arr?.length ?? 0 }, { status: 200 });
     }
 
-    const values = prices.map((p) => p[1]).filter((v) => Number.isFinite(v));
-    const sum = values.reduce((a, b) => a + b, 0);
-    const avg5y = sum / values.length;
+    // 最新から DAYS 分を切り出し（念のため）
+    const sliced = arr.slice(-DAYS);
 
-    const fromMs = prices[0][0];
-    const toMs = prices[prices.length - 1][0];
+    const closes = sliced.map((d) => Number(d.close)).filter((v) => Number.isFinite(v) && v > 0);
+    const sum = closes.reduce((a, b) => a + b, 0);
+    const avg5y = sum / closes.length;
 
-    const toISO = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const from = new Date(sliced[0].time * 1000).toISOString().slice(0, 10);
+    const to = new Date(sliced[sliced.length - 1].time * 1000).toISOString().slice(0, 10);
 
     return Response.json({
       avg5y: Number(avg5y.toFixed(2)),
-      days: values.length,
-      from: toISO(fromMs),
-      to: toISO(toMs),
-      source: "coingecko market_chart daily"
+      days: closes.length,
+      from,
+      to,
+      source: "cryptocompare histoday close"
     });
   } catch (e: any) {
     return Response.json(
